@@ -1,0 +1,498 @@
+openapi: "3.0.3"
+info:
+  title: CNAK TAK Gateway API
+  description: |
+    Management API for the CNAK TAK Gateway service.
+
+    Provides management of connected TAK clients, certificate enrollment
+    credentials, CA trust store downloads, and ATAK connection data package
+    generation.
+  version: "1.0.0"
+  license:
+    name: Apache 2.0
+
+servers:
+  - url: /api/tak-gateway
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    # ─── Common types ─────────────────────────────────────
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+
+    # ─── Client types ─────────────────────────────────────
+    ClientInfo:
+      type: object
+      properties:
+        uid:
+          type: string
+          description: Unique identifier from client's CoT SA message
+        callsign:
+          type: string
+          description: TAK callsign extracted from CoT
+        ip:
+          type: string
+          description: Remote IP address of the connection
+        certCN:
+          type: string
+          description: Common name from client's TLS certificate
+        podName:
+          type: string
+          description: Kubernetes pod handling this connection
+        connectedAt:
+          type: string
+          format: date-time
+        lastSeen:
+          type: string
+          format: date-time
+        protocolVersion:
+          type: string
+          description: Protocol version (xml or protobuf)
+        groups:
+          type: array
+          items:
+            type: string
+      required: [uid, callsign, ip, connectedAt, lastSeen]
+
+    # ─── Certificate / enrollment types ────────────────────
+    CredentialInfo:
+      type: object
+      description: Enrollment credential stored in NATS KV
+      properties:
+        username:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required: [username, createdAt]
+
+    EnrollmentRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          description: Username for TAK client enrollment via basic auth
+        password:
+          type: string
+          description: Password for TAK client enrollment via basic auth
+      required: [username, password]
+
+    # ─── QR code types ─────────────────────────────────────
+    QRCodeRequest:
+      type: object
+      properties:
+        hostname:
+          type: string
+          description: Hostname or IP that TAK clients will connect to for enrollment
+        username:
+          type: string
+          description: Enrollment username
+        password:
+          type: string
+          description: Enrollment password
+      required: [hostname, username, password]
+
+    # ─── Data package types ───────────────────────────────
+    DataPackageRequest:
+      type: object
+      properties:
+        hostname:
+          type: string
+          description: Hostname or IP that TAK clients will connect to
+      required: [hostname]
+
+    # ─── Status types ─────────────────────────────────────
+    GatewayStatus:
+      type: object
+      properties:
+        healthy:
+          type: boolean
+        connectedClients:
+          type: integer
+          description: Number of currently connected TAK clients
+        pod:
+          type: string
+          description: Kubernetes pod name (empty outside K8s)
+        uptime:
+          type: string
+          description: Service uptime duration string
+      required: [healthy, connectedClients, uptime]
+
+tags:
+  - name: Clients
+    description: Connected TAK client management
+  - name: Certificates
+    description: Client certificate enrollment and revocation
+  - name: DataPackages
+    description: Connection data package generation
+  - name: Enrollment
+    description: ATAK enrollment QR code generation
+  - name: Status
+    description: Service health and statistics
+
+paths:
+  # ══════════════════════════════════════════════════════
+  #  Clients
+  # ══════════════════════════════════════════════════════
+  /clients:
+    get:
+      operationId: ListClients
+      tags: [Clients]
+      summary: List connected TAK clients
+      description: |
+        Returns all currently connected TAK clients across all pods.
+        Client information is backed by NATS KV with a 5-minute TTL.
+      responses:
+        "200":
+          description: List of connected clients
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ClientInfo"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /clients/{uid}:
+    delete:
+      operationId: DisconnectClient
+      tags: [Clients]
+      summary: Disconnect a TAK client
+      description: Forcibly disconnects a connected TAK client by UID. Generates an audit event.
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Client UID to disconnect
+      responses:
+        "200":
+          description: Client disconnected
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: kicked
+                  uid:
+                    type: string
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Client not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ══════════════════════════════════════════════════════
+  #  Certificates
+  # ══════════════════════════════════════════════════════
+  /certificates:
+    get:
+      operationId: ListCertificates
+      tags: [Certificates]
+      summary: List enrollment credentials
+      description: |
+        Returns all stored enrollment credentials. These are username/password
+        pairs that TAK clients use for basic auth during certificate enrollment
+        via the Marti HTTPS API (/Marti/api/tls/signClient).
+      responses:
+        "200":
+          description: List of enrollment credentials
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CredentialInfo"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    post:
+      operationId: CreateEnrollment
+      tags: [Certificates]
+      summary: Create enrollment credentials
+      description: |
+        Creates a new username/password credential for TAK client certificate
+        enrollment. The password is bcrypt-hashed and stored in NATS KV.
+        Generates an audit event.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EnrollmentRequest"
+      responses:
+        "201":
+          description: Enrollment credentials created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: created
+                  username:
+                    type: string
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /certificates/{cn}:
+    delete:
+      operationId: RevokeCertificate
+      tags: [Certificates]
+      summary: Revoke enrollment credentials
+      description: |
+        Deletes enrollment credentials for the given common name, preventing
+        further certificate enrollment. Generates an audit event.
+      parameters:
+        - name: cn
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Certificate common name / username to revoke
+      responses:
+        "200":
+          description: Credential revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: revoked
+                  cn:
+                    type: string
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Credential not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ══════════════════════════════════════════════════════
+  #  CA Trust Store
+  # ══════════════════════════════════════════════════════
+  /ca/truststore:
+    get:
+      operationId: GetTrustStore
+      tags: [Certificates]
+      summary: Download CA trust store
+      description: |
+        Returns the Certificate Authority trust store as a PKCS#12 file.
+        Password is "atakatak" (TAK standard). Generates an audit event.
+      responses:
+        "200":
+          description: PKCS#12 trust store
+          content:
+            application/x-pkcs12:
+              schema:
+                type: string
+                format: binary
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: CA not initialized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ══════════════════════════════════════════════════════
+  #  Data Packages
+  # ══════════════════════════════════════════════════════
+  /datapackage:
+    post:
+      operationId: GenerateDataPackage
+      tags: [DataPackages]
+      summary: Generate a connection data package
+      description: |
+        Generates an ATAK mission package (ZIP) containing connection
+        preferences and the CA trust store. Import this on a TAK client
+        to configure the server connection. Generates an audit event.
+
+        The ZIP contains:
+        - `cert/config.pref` — Connection preferences XML
+        - `cert/truststore-root.p12` — CA trust store (password: atakatak)
+        - `MANIFEST/manifest.xml` — Mission package manifest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DataPackageRequest"
+      responses:
+        "200":
+          description: Connection data package ZIP
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: CA not initialized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ══════════════════════════════════════════════════════
+  #  Enrollment QR Code
+  # ══════════════════════════════════════════════════════
+  /enrollment/qrcode:
+    post:
+      operationId: GenerateEnrollmentQRCode
+      tags: [Enrollment]
+      summary: Generate an ATAK enrollment QR code
+      description: |
+        Generates a QR code PNG encoding a `tak://` enrollment URI.
+        ATAK 5.1+ clients can scan this QR code to auto-configure
+        server connection and trigger certificate enrollment.
+
+        The encoded URI format is:
+        `tak://com.atakmap.app/enroll?host={hostname}&username={username}&token={password}`
+
+        By default returns a PNG image. Set `Accept: application/json` to
+        receive a JSON response with the base64-encoded PNG and the raw URI.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QRCodeRequest"
+      responses:
+        "200":
+          description: QR code image
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uri:
+                    type: string
+                    description: The tak:// enrollment URI encoded in the QR code
+                  qrcode:
+                    type: string
+                    description: Base64-encoded PNG image of the QR code
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ══════════════════════════════════════════════════════
+  #  Status
+  # ══════════════════════════════════════════════════════
+  /status:
+    get:
+      operationId: GetGatewayStatus
+      tags: [Status]
+      security: []
+      summary: Get service health and statistics
+      responses:
+        "200":
+          description: Gateway status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GatewayStatus"
