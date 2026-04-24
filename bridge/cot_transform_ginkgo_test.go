@@ -3,6 +3,8 @@ package bridge
 import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/cnak-us/cnak/pkg/natsutil"
 )
 
 var _ = Describe("CoT Transform", func() {
@@ -111,15 +113,15 @@ var _ = Describe("CoT Transform", func() {
 		})
 	})
 
-	Describe("SanitizeGroup", func() {
-		DescribeTable("group sanitization",
+	Describe("SanitizeSubjectToken", func() {
+		DescribeTable("group sanitization via shared natsutil",
 			func(input, expected string) {
-				Expect(SanitizeGroup(input)).To(Equal(expected))
+				Expect(natsutil.SanitizeSubjectToken(input)).To(Equal(expected))
 			},
 			Entry("no change needed", "ALPHA", "ALPHA"),
 			Entry("spaces to underscores", "Team Alpha", "Team_Alpha"),
-			Entry("dots to hyphens", "group.sub", "group-sub"),
-			Entry("mixed", "a b.c d", "a_b-c_d"),
+			Entry("dots to underscores", "group.sub", "group_sub"),
+			Entry("mixed", "a b.c d", "a_b_c_d"),
 			Entry("empty", "", ""),
 		)
 	})

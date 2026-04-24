@@ -147,15 +147,6 @@ func ExtractCallsignFromCoT(cotXML []byte) string {
 	}
 	return ""
 }
-
-// SanitizeGroup replaces spaces with underscores and dots with hyphens
-// to make group names safe for NATS subjects.
-func SanitizeGroup(group string) string {
-	s := strings.ReplaceAll(group, " ", "_")
-	s = strings.ReplaceAll(s, ".", "-")
-	return s
-}
-
 // PointToCoTXML converts a Point back to CoT XML for relay to TAK clients.
 func PointToCoTXML(point *Point) ([]byte, error) {
 	now := time.Now().UTC().Format(time.RFC3339)

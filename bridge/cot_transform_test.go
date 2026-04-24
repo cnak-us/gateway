@@ -6,6 +6,7 @@ import (
 	"time"
 
 	cot "github.com/cnak-us/cnak/pkg/cot"
+	"github.com/cnak-us/cnak/pkg/natsutil"
 )
 
 func TestCotXMLToPoint(t *testing.T) {
@@ -238,24 +239,24 @@ func TestExtractCallsignFromCoT(t *testing.T) {
 	}
 }
 
-func TestSanitizeGroup(t *testing.T) {
+func TestSanitizeSubjectToken(t *testing.T) {
 	tests := []struct {
 		input    string
 		expected string
 	}{
 		{"ALPHA", "ALPHA"},
 		{"Team Alpha", "Team_Alpha"},
-		{"group.sub", "group-sub"},
-		{"a b.c d", "a_b-c_d"},
+		{"group.sub", "group_sub"},
+		{"a b.c d", "a_b_c_d"},
 		{"", ""},
 		{"no_change", "no_change"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			got := SanitizeGroup(tt.input)
+			got := natsutil.SanitizeSubjectToken(tt.input)
 			if got != tt.expected {
-				t.Errorf("SanitizeGroup(%q) = %q, want %q", tt.input, got, tt.expected)
+				t.Errorf("SanitizeSubjectToken(%q) = %q, want %q", tt.input, got, tt.expected)
 			}
 		})
 	}

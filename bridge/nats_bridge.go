@@ -11,6 +11,7 @@ import (
 
 	"github.com/nats-io/nats.go"
 	cot "github.com/cnak-us/cnak/pkg/cot"
+	"github.com/cnak-us/cnak/pkg/natsutil"
 )
 
 // ClientWriter is the interface for sending data to a connected TAK client.
@@ -197,7 +198,7 @@ func (b *Bridge) PublishCoT(cotXML []byte, senderUID string) error {
 
 	b.cachePoint(point)
 
-	group := SanitizeGroup(point.Group)
+	group := natsutil.SanitizeSubjectToken(point.Group)
 
 	// Parse into full CoT Event for the richer JSON format
 	event, err := cot.FromXMLBytes(cotXML)
