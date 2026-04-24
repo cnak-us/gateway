@@ -1,0 +1,11 @@
+This project contains components derived from the TAK ecosystem protocols.
+
+TAK Server
+Copyright (c) TAK Product Center
+https://github.com/TAK-Product-Center/Server
+License: https://github.com/TAK-Product-Center/Server/blob/main/LICENSE.txt
+
+This project implements the TAK client protocol (Cursor on Target over
+TCP/TLS) and certificate enrollment compatible with TAK Server. It is
+distributed separately from the main CNAK repository to comply with the
+TAK Server license terms.
