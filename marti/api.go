@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/cnak-us/gateway/audit"
@@ -101,9 +102,13 @@ func (m *MartiAPI) ListenAndServeTLS(ctx context.Context) error {
 
 	addr := fmt.Sprintf(":%d", m.cfg.HTTPSAPIPort)
 	srv := &http.Server{
-		Addr:      addr,
-		Handler:   m.router,
-		TLSConfig: tlsConfig,
+		Addr:           addr,
+		Handler:        m.router,
+		TLSConfig:      tlsConfig,
+		ReadTimeout:    30 * time.Second,
+		WriteTimeout:   30 * time.Second,
+		IdleTimeout:    120 * time.Second,
+		MaxHeaderBytes: 1 << 20,
 	}
 
 	go func() {
