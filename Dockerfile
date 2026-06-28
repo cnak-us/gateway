@@ -13,7 +13,8 @@ COPY . .
 
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o gateway .
 
-FROM alpine:3.21
+FROM alpine:3.22
+RUN apk upgrade --no-cache openssl libcrypto3 libssl3 ca-certificates
 RUN apk --no-cache add ca-certificates
 ENV GODEBUG=fips140=on
 WORKDIR /app
